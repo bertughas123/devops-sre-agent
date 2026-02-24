@@ -1,0 +1,51 @@
+version: '3.8'
+
+networks:
+  opsguard-net:
+    driver: bridge
+
+services:
+  web:
+    image: nginx:alpine
+    container_name: web-prod
+    restart: always
+    ports:
+      - "8080:80"
+    networks:
+      - opsguard-net
+    volumes:
+      - web-logs:/var/log
+    command: [nginx-debug, '-g', 'daemon off;']
+
+  db:
+    image: postgres:16-alpine
+    container_name: db-prod
+    restart: "no" # KRİTİK: Docker kaldırmamalı, Agent restart yeteneğini test etmeli!
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    networks:
+      - opsguard-net
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - db-logs:/var/log
+    shm_size: '64mb'
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - opsguard-net
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  pgdata:
+  ollama_data:
+  web-logs:
+  db-logs:
