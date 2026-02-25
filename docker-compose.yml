@@ -1,5 +1,3 @@
-version: '3.8'
-
 networks:
   opsguard-net:
     driver: bridge
@@ -15,7 +13,7 @@ services:
       - opsguard-net
     volumes:
       - web-logs:/var/log
-    command: [nginx-debug, '-g', 'daemon off;']
+    command: [ nginx-debug, '-g', 'daemon off;' ]
 
   db:
     image: postgres:16-alpine
