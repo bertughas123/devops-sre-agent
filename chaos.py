@@ -7,19 +7,24 @@ import docker
 
 def fill_web_disk_trigger():
     """
-    web-prod container'ının /var/log dizinine 2GB çöp veri yazar.
+    web-prod container'ının /var/log dizinine 150MB çöp veri yazar.
     
     Neden /var/log?
     - Nginx loglarının yazıldığı standart dizin.
     - Agent'ın clean_logs tool'u bu dizini hedef alır.
     - Gerçek hayatta log rotation yapılmadığında olan senaryo.
+    
+    Neden 150MB (2GB yerine)?
+    - Observer artık klasör boyutunu (du -sm) izliyor, disk yüzdesini değil.
+    - WEB_LOG_THRESHOLD_MB=100 → 150MB yazmak alarmı tetiklemek için yeterli.
+    - SSD ömrünü gereksiz yere tüketmez, test döngüsü çok daha hızlı biter.
     """
     cmd = (
         "docker exec web-prod "
-        "dd if=/dev/zero of=/var/log/chaos_garbage.log bs=1M count=2000"
+        "dd if=/dev/zero of=/var/log/chaos_garbage.log bs=1M count=150"
     )
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    return "Chaos: Web sunucusu (web-prod) log alanı dolduruldu."
+    return "Chaos: Web sunucusu (web-prod) log alanı dolduruldu (150MB)."
 
 def create_zombie_containers(count=15):
     """
