@@ -80,45 +80,52 @@ class SystemObserver:
         - 5+ → Alarm! Sistematik sorun var.
         """
         try:
-            exited = self.client.containers.list(
-                all=True,
-                filters={"status": "exited"}
-            )
+            exited = self.client.containers.list(all=True, filters={"status": "exited"})
             count = len(exited)
+
             if count > 5:
                 if not self.active_alarms["zombie"]:
                     self.active_alarms["zombie"] = True
-                    return f"🧟 ALARM: ZOMBIE_OUTBREAK - Sistemde {count} adet ölü container var!"
+                    return [f"🧟 ALARM: ZOMBIE_OUTBREAK - Sistemde {count} adet ölü container var!"]
             else:
                 self.active_alarms["zombie"] = False
+
         except Exception as e:
             print(f"[OBSERVER] Zombi kontrolü hatası: {e}")
-        return None
+
+        return []
 
     async def start(self):
         """
         Observer'ın ana döngüsü. Sonsuz çalışır.
         
         Akış:
-        1. Disk kontrolü yap → alarm varsa callback'i çağır
-        2. Zombi kontrolü yap → alarm varsa callback'i çağır
+        1. Tüm sensörleri eş zamanlı çalıştır (asyncio.to_thread + gather)
+        2. Sonuçları işle → alarm varsa callback'i çağır
         3. Interval kadar bekle → tekrar başa dön
         """
         print(f"[OBSERVER] Başlatıldı. Tarama aralığı: {self.check_interval}sn")
-        
+
+        # Sensör Listesi (Registry Pattern)
+        sensors = [self.check_disk_usage, self.check_zombie_containers]
+
         while True:
-            # Disk kontrolü
-            disk_alarms = self.check_disk_usage()
-            for alarm in disk_alarms:
-                print(f"[OBSERVER] {alarm}")
-                if self.message_callback:
-                    await self.message_callback(alarm)
-            
-            # Zombi kontrolü
-            zombie_alarm = self.check_zombie_containers()
-            if zombie_alarm:
-                print(f"[OBSERVER] {zombie_alarm}")
-                if self.message_callback:
-                    await self.message_callback(zombie_alarm)
-            
+            # 1. Bütün sensörleri AYNI ANDA arka plan thread'lerinde çalıştır
+            tasks = [asyncio.to_thread(sensor) for sensor in sensors]
+
+            # 2. Hepsinden gelecek sonuçları bekle (Kilitlenmeyi önler)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # 3. Sonuçları standardize şekilde işle
+            for result in results:
+                if isinstance(result, Exception):
+                    print(f"[OBSERVER] Sensör çalışma hatası: {result}")
+                    continue
+
+                if isinstance(result, list) and result:
+                    for alarm in result:
+                        print(f"[OBSERVER] {alarm}")
+                        if self.message_callback:
+                            await self.message_callback(alarm)
+
             await asyncio.sleep(self.check_interval)
