@@ -19,6 +19,7 @@ class SystemObserver:
         self.check_interval = int(os.getenv("OBSERVER_INTERVAL", "15"))
         self.web_log_threshold_mb = int(os.getenv("WEB_LOG_THRESHOLD_MB", "100"))
         self.client = docker.from_env()
+        self.active_alarms = {"web-prod": False, "db-prod": False, "zombie": False}
 
     def check_disk_usage(self):
         """
@@ -53,12 +54,16 @@ class SystemObserver:
                 size_mb = int(result.stdout.strip().split()[0])
                 
                 if size_mb > self.web_log_threshold_mb:
-                    alarm_type = config['alarm']
-                    if alarm_type == "WEB_LOG_SATURATION":
-                        msg = f"⚠️ ALARM: {alarm_type} - web-prod /var/log boyutu {size_mb}MB! (Eşik: {self.web_log_threshold_mb}MB) Loglar şişti!"
-                    else:
-                        msg = f"🔴 ALARM: {alarm_type} - db-prod /var/log boyutu {size_mb}MB! Çökme Riski!"
-                    alarms.append(msg)
+                    if not self.active_alarms[container_name]:
+                        self.active_alarms[container_name] = True
+                        alarm_type = config['alarm']
+                        if alarm_type == "WEB_LOG_SATURATION":
+                            msg = f"⚠️ ALARM: {alarm_type} - web-prod /var/log boyutu {size_mb}MB! (Eşik: {self.web_log_threshold_mb}MB) Loglar şişti!"
+                        else:
+                            msg = f"🔴 ALARM: {alarm_type} - db-prod /var/log boyutu {size_mb}MB! Çökme Riski!"
+                        alarms.append(msg)
+                else:
+                    self.active_alarms[container_name] = False
             except Exception as e:
                 print(f"[OBSERVER] {container_name} disk kontrolü hatası: {e}")
         
@@ -81,7 +86,11 @@ class SystemObserver:
             )
             count = len(exited)
             if count > 5:
-                return f"🧟 ALARM: ZOMBIE_OUTBREAK - Sistemde {count} adet ölü container var!"
+                if not self.active_alarms["zombie"]:
+                    self.active_alarms["zombie"] = True
+                    return f"🧟 ALARM: ZOMBIE_OUTBREAK - Sistemde {count} adet ölü container var!"
+            else:
+                self.active_alarms["zombie"] = False
         except Exception as e:
             print(f"[OBSERVER] Zombi kontrolü hatası: {e}")
         return None
