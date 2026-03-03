@@ -1,6 +1,9 @@
-"""Safe (Autonomous) Tools — Phase 1."""
-import subprocess
+"""Safe (Autonomous) Tools — Phase 1 (Docker SDK)."""
+import docker
 from langchain.tools import tool
+
+# Module-level Docker client (single connection, reused by all tools)
+client = docker.from_env()
 
 @tool
 def clean_logs(container_name: str) -> str:
@@ -14,25 +17,27 @@ def clean_logs(container_name: str) -> str:
         container_name: Target container name (e.g. 'web-prod')
 
     Returns:
-        Cleanup result and current disk status.
+        Cleanup result with current /var/log size in MB.
     """
-    # 1. Truncate logs
-    # truncate -s 0 → Resets file size to 0 (clears content, keeps file)
-    # *.log → All .log files under /var/log
-    truncate_cmd = f"docker exec {container_name} sh -c 'truncate -s 0 /var/log/*.log'"
-    subprocess.run(truncate_cmd, shell=True, capture_output=True)
-    
-    # 2. Check disk status after cleanup
-    df_cmd = f"docker exec {container_name} df -h /"
-    result = subprocess.run(df_cmd, shell=True, capture_output=True, text=True)
-    
-    # 3. Parse disk usage percentage
     try:
-        lines = result.stdout.strip().split('\n')
-        usage = lines[-1].split()[4]  # e.g. "23%"
-        return f"{container_name} logs cleaned. Current usage: {usage}."
-    except Exception:
-        return f"{container_name} logs cleaned. (Could not read disk status)"
+        container = client.containers.get(container_name)
+
+        # 1. Truncate all log files inside the container
+        # sh -c is required for wildcard (*) expansion
+        container.exec_run("sh -c 'truncate -s 0 /var/log/*.log'")
+
+        # 2. Check directory size after cleanup (du -sm = size in MB)
+        exit_code, output = container.exec_run("du -sm /var/log")
+
+        # 3. Parse MB value from output (format: b'155\t/var/log\n')
+        size_mb = int(output.decode().strip().split()[0])
+
+        return f"{container_name} logs cleaned. Current /var/log size: {size_mb}MB."
+
+    except docker.errors.NotFound:
+        return f"Error: Container '{container_name}' not found."
+    except Exception as e:
+        return f"Error cleaning logs on {container_name}: {e}"
 
 @tool
 def prune_containers(reason: str) -> str:
@@ -45,12 +50,22 @@ def prune_containers(reason: str) -> str:
         reason: Reason for the cleanup (Agent provides an explanation)
 
     Returns:
-        Cleanup result.
+        Cleanup result with deleted count and reclaimed space.
     """
-    # docker system prune -f → Removes all stopped containers, unused networks,
-    # and dangling images. -f = force (no confirmation prompt)
-    result = subprocess.run(
-        "docker system prune -f",
-        shell=True, capture_output=True, text=True
-    )
-    return f"System pruned. Reason: {reason}. Zombie containers cleaned."
+    try:
+        # client.containers.prune() returns a dict:
+        # {'ContainersDeleted': ['id1', 'id2', ...], 'SpaceReclaimed': 12345678}
+        result = client.containers.prune()
+
+        deleted_list = result.get("ContainersDeleted", None) or []
+        deleted_count = len(deleted_list)
+
+        space_bytes = result.get("SpaceReclaimed", 0)
+        space_mb = round(space_bytes / (1024 * 1024), 2)
+
+        return (
+            f"System pruned. Reason: {reason}. "
+            f"Deleted: {deleted_count} containers. Reclaimed: {space_mb}MB."
+        )
+    except Exception as e:
+        return f"Error during prune: {e}"
