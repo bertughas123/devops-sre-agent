@@ -3,7 +3,7 @@ import asyncio
 import chainlit as cl
 from core.agent import create_agent
 from utils.observer import SystemObserver
-from chaos import start_chaos_loop
+from chaos.runner import start_chaos_loop
 
 # Global agent and observer (shared across all sessions)
 agent_executor = None
