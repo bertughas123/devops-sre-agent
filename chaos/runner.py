@@ -6,7 +6,7 @@ import random
 from chaos.scenarios import fill_web_disk_trigger, create_zombie_containers
 
 
-def start_chaos_loop(interval_min=180, interval_max=300):
+def start_chaos_loop(interval_min=450, interval_max=650):
     """
     Runs random chaos scenarios in a background daemon thread.
 

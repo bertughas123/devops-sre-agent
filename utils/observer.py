@@ -16,7 +16,7 @@ class SystemObserver:
                 Example: async def send(msg): await cl.Message(content=msg).send()
         """
         self.message_callback = message_callback
-        self.check_interval = int(os.getenv("OBSERVER_INTERVAL", "15"))
+        self.check_interval = int(os.getenv("OBSERVER_INTERVAL", "30"))
         self.web_log_threshold_mb = int(os.getenv("WEB_LOG_THRESHOLD_MB", "100"))
         self.client = docker.from_env()
 
@@ -113,6 +113,7 @@ class SystemObserver:
         sensors = [self.check_disk_usage, self.check_zombie_containers]
 
         while True:
+            print(f"[OBSERVER] Scanning... (interval: {self.check_interval}s)")
             # 1. Run all sensors CONCURRENTLY in background threads
             tasks = [asyncio.to_thread(sensor) for sensor in sensors]
 
