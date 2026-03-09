@@ -1,9 +1,9 @@
-# 🛡️ OpsGuard — Otonom SRE Asistanı
+# 🛡️ OpsGuard — Autonomous SRE Assistant
 
-Sisteminizi 7/24 izliyorum. Sorun tespit ettiğimde:
-- ✅ **Güvenli sorunları** otomatik çözerim (disk, zombi)
-- ⚠️ **Riskli işlemlerde** size danışırım (DB restart, veri silme)
+I monitor your system 24/7. When I detect an issue:
+- ✅ **Safe issues** are resolved automatically (disk, zombies)
+- ⚠️ **Risky operations** require your approval (DB restart, data deletion)
 
-**İzlenen Servisler:** web-prod, db-prod
+**Monitored Services:** web-prod, db-prod
 
-Bir sorun olduğunda sizi bilgilendireceğim.
+I will notify you when an issue is detected.
