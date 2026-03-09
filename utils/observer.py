@@ -1,4 +1,4 @@
-"""Sistem Gözlemcisi (Observer) — Faz 1."""
+"""System Observer — Phase 1."""
 import os
 import asyncio
 import subprocess
@@ -6,33 +6,22 @@ import docker
 
 class SystemObserver:
     """
-    Container'ları periyodik olarak tarayan daemon.
+    Daemon that periodically scans containers for anomalies.
     """
     
     def __init__(self, message_callback=None):
         """
         Args:
-            message_callback: async fonksiyon. Alarm mesajını UI'a gönderir.
-                Örnek: async def send(msg): await cl.Message(content=msg).send()
+            message_callback: Async function that sends alarm messages to the UI.
+                Example: async def send(msg): await cl.Message(content=msg).send()
         """
         self.message_callback = message_callback
         self.check_interval = int(os.getenv("OBSERVER_INTERVAL", "15"))
         self.web_log_threshold_mb = int(os.getenv("WEB_LOG_THRESHOLD_MB", "100"))
         self.client = docker.from_env()
-        self.active_alarms = {"web-prod": False, "db-prod": False, "zombie": False}
 
-    def check_disk_usage(self):
-        """
-        Container'ların log klasör boyutlarını MB cinsinden kontrol eder.
-        
-        ALARM FARKLILIĞI (ÖNEMLİ):
-        - web-prod > WEB_LOG_THRESHOLD_MB → WEB_LOG_SATURATION
-        - db-prod > WEB_LOG_THRESHOLD_MB → DB_DISK_CRITICAL (Faz 2'de aktif)
-        """
-        alarms = []
-        
-        # Her container'ın izlenecek klasörü ve alarm tipi
-        targets = {
+        # Monitoring targets: container name -> path & alarm type
+        self.targets = {
             "web-prod": {
                 "path": "/var/log",
                 "alarm": "WEB_LOG_SATURATION"
@@ -42,42 +31,56 @@ class SystemObserver:
                 "alarm": "DB_DISK_CRITICAL"
             }
         }
-        
-        for container_name, config in targets.items():
+
+        # Build active_alarms dynamically from targets + zombie
+        self.active_alarms = {name: False for name in self.targets}
+        self.active_alarms["zombie"] = False
+
+    def check_disk_usage(self):
+        """
+        Checks log directory sizes (in MB) for all monitored containers.
+
+        Iterates over self.targets and raises an alarm if the directory
+        size exceeds self.web_log_threshold_mb.
+        """
+        alarms = []
+
+        for container_name, config in self.targets.items():
             try:
                 result = subprocess.run(
                     f"docker exec {container_name} du -sm {config['path']}",
                     shell=True, capture_output=True, text=True
                 )
-                # Çıktı formatı: '155    /var/log'
-                # İlk sütun = boyut (MB)
+                # Output format: '155    /var/log'
+                # First column = size (MB)
                 size_mb = int(result.stdout.strip().split()[0])
-                
+
                 if size_mb > self.web_log_threshold_mb:
                     if not self.active_alarms[container_name]:
                         self.active_alarms[container_name] = True
                         alarm_type = config['alarm']
-                        if alarm_type == "WEB_LOG_SATURATION":
-                            msg = f"⚠️ ALARM: {alarm_type} - web-prod /var/log boyutu {size_mb}MB! (Eşik: {self.web_log_threshold_mb}MB) Loglar şişti!"
-                        else:
-                            msg = f"🔴 ALARM: {alarm_type} - db-prod /var/log boyutu {size_mb}MB! Çökme Riski!"
+                        msg = (
+                            f"⚠️ ALARM: {alarm_type} - {container_name} "
+                            f"{config['path']} size is {size_mb}MB! "
+                            f"(Threshold: {self.web_log_threshold_mb}MB)"
+                        )
                         alarms.append(msg)
                 else:
                     self.active_alarms[container_name] = False
             except Exception as e:
-                print(f"[OBSERVER] {container_name} disk kontrolü hatası: {e}")
-        
+                print(f"[OBSERVER] {container_name} disk check error: {e}")
+
         return alarms
 
     def check_zombie_containers(self):
         """
-        Exited durumdaki container'ları sayar.
-        
+        Counts containers in Exited state.
+
         docker.from_env().containers.list(filters={"status": "exited"})
         ──────────────────────────────────────────────────────────────
-        Eşik: 5 container
-        - 1-5 arası → Normal (eski container'lar olabilir)
-        - 5+ → Alarm! Sistematik sorun var.
+        Threshold: 5 containers
+        - 1-5 → Normal (old containers may exist)
+        - 5+  → Alarm! Systematic issue detected.
         """
         try:
             exited = self.client.containers.list(all=True, filters={"status": "exited"})
@@ -86,40 +89,40 @@ class SystemObserver:
             if count > 5:
                 if not self.active_alarms["zombie"]:
                     self.active_alarms["zombie"] = True
-                    return [f"🧟 ALARM: ZOMBIE_OUTBREAK - Sistemde {count} adet ölü container var!"]
+                    return [f"🧟 ALARM: ZOMBIE_OUTBREAK - {count} dead containers detected in the system!"]
             else:
                 self.active_alarms["zombie"] = False
 
         except Exception as e:
-            print(f"[OBSERVER] Zombi kontrolü hatası: {e}")
+            print(f"[OBSERVER] Zombie check error: {e}")
 
         return []
 
     async def start(self):
         """
-        Observer'ın ana döngüsü. Sonsuz çalışır.
-        
-        Akış:
-        1. Tüm sensörleri eş zamanlı çalıştır (asyncio.to_thread + gather)
-        2. Sonuçları işle → alarm varsa callback'i çağır
-        3. Interval kadar bekle → tekrar başa dön
-        """
-        print(f"[OBSERVER] Başlatıldı. Tarama aralığı: {self.check_interval}sn")
+        Main observer loop. Runs indefinitely.
 
-        # Sensör Listesi (Registry Pattern)
+        Flow:
+        1. Run all sensors concurrently (asyncio.to_thread + gather)
+        2. Process results → invoke callback if alarms exist
+        3. Sleep for interval → repeat
+        """
+        print(f"[OBSERVER] Started. Scan interval: {self.check_interval}s")
+
+        # Sensor list (Registry Pattern)
         sensors = [self.check_disk_usage, self.check_zombie_containers]
 
         while True:
-            # 1. Bütün sensörleri AYNI ANDA arka plan thread'lerinde çalıştır
+            # 1. Run all sensors CONCURRENTLY in background threads
             tasks = [asyncio.to_thread(sensor) for sensor in sensors]
 
-            # 2. Hepsinden gelecek sonuçları bekle (Kilitlenmeyi önler)
+            # 2. Wait for all results (prevents blocking)
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # 3. Sonuçları standardize şekilde işle
+            # 3. Process results in a standardized way
             for result in results:
                 if isinstance(result, Exception):
-                    print(f"[OBSERVER] Sensör çalışma hatası: {result}")
+                    print(f"[OBSERVER] Sensor execution error: {result}")
                     continue
 
                 if isinstance(result, list) and result:
