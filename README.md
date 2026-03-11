@@ -1,49 +1,5 @@
-# 🛡️ OpsGuard — Architecture Overview
+# Phase1
 
-> **Autonomous Infrastructure Agent** — Self-healing ops powered by LLM decision-making.
-> 
-> *This document covers Phases 0–3. More phases incoming.*
+<img width="1038" height="405" alt="Screenshot_4" src="https://github.com/user-attachments/assets/8a8692bb-c2f1-4c65-99c6-599b0509ae91" />
 
----
-
-## High-Level Vision
-
-```mermaid
-graph LR
-    subgraph "💥 Chaos Engine"
-        C[chaos.py]
-    end
-
-    subgraph "🐳 Docker Environment"
-        W[web-prod<br/>Nginx]
-        D[db-prod<br/>PostgreSQL]
-        Z[Zombie Containers]
-    end
-
-    subgraph "👁️ Observer"
-        O[observer.py]
-    end
-
-    subgraph "🧠 Agent Core"
-        P[prompt.py] --> A[agent.py]
-    end
-
-    subgraph "🔧 Toolbox"
-        S[safe.py]
-        R[risky.py]
-    end
-
-    C -->|breaks| W
-    C -->|breaks| D
-    C -->|spawns| Z
-    O -->|monitors| W
-    O -->|monitors| D
-    O -->|alerts| A
-    A -->|uses| S
-    A -->|uses| R
-    S -->|fixes| W
-    S -->|fixes| D
-    R -->|restarts| D
-    S -->|prunes| Z
-```
-
+<img width="1516" height="344" alt="Screenshot_5" src="https://github.com/user-attachments/assets/4401a6ea-9c5c-4d4f-ab12-f0b2b055f2cf" />
