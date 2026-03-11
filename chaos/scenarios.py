@@ -1,8 +1,12 @@
 """Chaos Scenarios — Phase 1 & Phase 2."""
-import subprocess
 import random
 import time
 import docker
+
+try:
+    client = docker.from_env()
+except Exception:
+    client = None
 
 
 def fill_web_disk_trigger():
@@ -16,15 +20,20 @@ def fill_web_disk_trigger():
 
     Why 150MB (instead of 2GB)?
     - Observer now monitors directory size (du -sm), not disk percentage.
-    - WEB_LOG_THRESHOLD_MB=100 — writing 150MB is enough to trigger the alarm.
+    - WEB_LOG_THRESHOLD_MB=100, writing 150MB is enough to trigger the alarm.
     - Does not waste SSD lifespan; test cycle completes much faster.
     """
-    cmd = (
-        "docker exec web-prod "
-        "dd if=/dev/zero of=/var/log/chaos_garbage.log bs=1M count=150"
-    )
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    return "Chaos: Web server (web-prod) log area filled (150MB)."
+    try:
+        container = client.containers.get("web-prod")
+        container.exec_run(
+            "dd if=/dev/zero of=/var/log/chaos_garbage.log bs=1M count=150"
+        )
+        return "Chaos: Web server (web-prod) log area filled (150MB)."
+
+    except docker.errors.NotFound:
+        return "Chaos SKIPPED: web-prod container not found."
+    except Exception as e:
+        return f"Chaos ERROR: {e}"
 
 
 def create_zombie_containers(count=15):
@@ -36,10 +45,9 @@ def create_zombie_containers(count=15):
     - Accumulated old containers in developer environments.
 
     Why Docker SDK (instead of subprocess)?
-    - subprocess.run: Opens a new shell per iteration — slow.
-    - Docker SDK: Connects to Docker Daemon directly via REST API — fast.
+    - subprocess.run: Opens a new shell per iteration, slow.
+    - Docker SDK: Connects to Docker Daemon directly via REST API, fast.
     """
-    client = docker.from_env()
     created_count = 0
 
     for i in range(count):
@@ -90,7 +98,6 @@ def trigger_db_garbage_flood():
       the "No space left" pattern without a real disk-full condition.
     """
     try:
-        client = docker.from_env()
         container = client.containers.get("db-prod")
 
         container.exec_run(
@@ -125,7 +132,6 @@ def trigger_config_corruption():
     instead of a blind time.sleep(3) deterministic across all systems.
     """
     try:
-        client = docker.from_env()
         container = client.containers.get("db-prod")
 
         container.exec_run(
@@ -160,7 +166,6 @@ def trigger_oom_kill():
     No data corruption just ran out of memory.
     """
     try:
-        client = docker.from_env()
         container = client.containers.get("db-prod")
 
         container.kill(signal="SIGKILL")
@@ -191,7 +196,6 @@ def trigger_data_corruption():
     and crash with a checksum error which Observer can detect.
     """
     try:
-        client = docker.from_env()
         container = client.containers.get("db-prod")
 
         container.exec_run(
@@ -213,4 +217,5 @@ def trigger_data_corruption():
         return "Chaos SKIPPED: db-prod container not found."
     except Exception as e:
         return f"Chaos ERROR: {e}"
+
 
