@@ -1,36 +1,49 @@
-"""Chaos Runner — Background thread loop for Phase 1."""
+"""Chaos Runner — Exhaustible loop for Phase 1 & Phase 2 (Shuffle & Pop)."""
 import time
 import threading
 import random
 
-from chaos.scenarios import fill_web_disk_trigger, create_zombie_containers
+from chaos.scenarios import (
+    fill_web_disk_trigger,
+    create_zombie_containers,
+    trigger_db_garbage_flood,
+    trigger_config_corruption,
+    trigger_oom_kill,
+    trigger_data_corruption,
+)
 
 
 def start_chaos_loop(interval_min=450, interval_max=650):
     """
-    Runs random chaos scenarios in a background daemon thread.
+    Runs all chaos scenarios exactly once in randomized order (Shuffle & Pop).
 
-    Critical design decision: interval_min=180 (3 minutes)
-    - Observer will look back 2 minutes into logs (Phase 2).
-    - If chaos interval < 2min, Observer may still be processing
-      the previous alarm when a new chaos hits — collision!
-    - Therefore: chaos interval (3-5min) > observer window (2min).
-
-    Threading notes:
-    - daemon=True — thread dies when the main program exits.
-    - Does not block the main program.
+    Phase 1 + Phase 2 = 6 scenarios.
+    Each scenario is drawn from the deck like a card, never repeated.
+    The engine stops gracefully when all scenarios have been executed.
     """
     def _loop():
-        scenarios = [fill_web_disk_trigger, create_zombie_containers]
-        while True:
+        scenarios = [
+            fill_web_disk_trigger,
+            create_zombie_containers,
+            trigger_db_garbage_flood,
+            trigger_config_corruption,
+            trigger_oom_kill,
+            trigger_data_corruption,
+        ]
+        random.shuffle(scenarios)
+
+        while scenarios:
             wait = random.randint(interval_min, interval_max)
+            print(f"[CHAOS] Next scenario in {wait}s. Remaining tests: {len(scenarios)}")
             time.sleep(wait)
-            scenario = random.choice(scenarios)
+            scenario = scenarios.pop()
             try:
                 result = scenario()
                 print(f"[CHAOS] {result}")
             except Exception as e:
                 print(f"[CHAOS] Error: {e}")
+
+        print("[CHAOS] All chaos scenarios executed successfully. Engine stopping.")
 
     t = threading.Thread(target=_loop, daemon=True)
     t.start()
