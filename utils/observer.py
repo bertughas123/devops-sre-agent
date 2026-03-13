@@ -1,8 +1,43 @@
-"""System Observer — Phase 1."""
+"""System Observer — Phase 1 & 2."""
 import os
 import asyncio
 import subprocess
 import docker
+import re
+from datetime import datetime
+from dateutil import parser as dateutil_parser
+
+# ── SRE Rule Engine: Database Crash Diagnosis ──
+DIAGNOSIS_RULES = [
+    {
+        "priority": 1,
+        "type": "OOM_KILL",
+        "exit_code": 137,
+        "regex": None,
+        "alarm": "🔴 ALARM: DB_CRASH - OOM Killer! Database killed due to memory exhaustion. (Exit 137)"
+    },
+    {
+        "priority": 2,
+        "type": "DISK_FULL",
+        "exit_code": None,
+        "regex": re.compile(r"no space left|disk full|out of disk", re.IGNORECASE),
+        "alarm": "🔴 ALARM: DB_CRASH - Disk Full! Database crashed due to no space left."
+    },
+    {
+        "priority": 3,
+        "type": "CONFIG_ERROR",
+        "exit_code": None,
+        "regex": re.compile(r"configuration file.*errors?", re.IGNORECASE),
+        "alarm": "🔴 ALARM: DB_CRASH - Config Error! postgresql.conf is corrupted. Restart will NOT fix this."
+    },
+    {
+        "priority": 4,
+        "type": "DATA_CORRUPTION",
+        "exit_code": None,
+        "regex": re.compile(r"invalid checksum|panic:", re.IGNORECASE),
+        "alarm": "🔴 ALARM: DB_CRASH - DATA CORRUPTION! pg_control or data files are damaged. Restart is DANGEROUS!"
+    }
+]
 
 class SystemObserver:
     """
@@ -25,16 +60,14 @@ class SystemObserver:
             "web-prod": {
                 "path": "/var/log",
                 "alarm": "WEB_LOG_SATURATION"
-            },
-            "db-prod": {
-                "path": "/var/log",
-                "alarm": "DB_DISK_CRITICAL"
             }
+            # db-prod removed -> handled globally by check_database()
         }
 
-        # Build active_alarms dynamically from targets + zombie
+        # Build active_alarms dynamically from targets + zombie + db-prod
         self.active_alarms = {name: False for name in self.targets}
         self.active_alarms["zombie"] = False
+        self.active_alarms["db-prod"] = False
 
     def check_disk_usage(self):
         """
@@ -98,6 +131,57 @@ class SystemObserver:
 
         return []
 
+    def check_database(self):
+        """
+        Analyzes db-prod container state with three SRE safeguards:
+        """
+        try:
+            container = self.client.containers.get("db-prod")
+            status = container.status
+            
+            # ── RUNNING → Reset alarm flag, stay silent ──
+            if status == "running":
+                self.active_alarms["db-prod"] = False
+                return None
+            
+            # ── SPAM GUARD → Already alarmed? Don't repeat. ──
+            if self.active_alarms["db-prod"]:
+                return None
+            
+            # ── EXITED → Detective mode ──
+            started_at_str = container.attrs.get("State", {}).get("StartedAt", "")
+            started_at = dateutil_parser.isoparse(started_at_str)
+
+            logs = container.logs(
+                since=int(started_at.timestamp()),
+                tail=150
+            ).decode('utf-8', errors='ignore')
+            
+            # Exit Code
+            exit_code = container.attrs.get("State", {}).get("ExitCode", -1)
+            
+            # ── DIAGNOSIS ENGINE ──
+            sorted_rules = sorted(DIAGNOSIS_RULES, key=lambda x: x["priority"])
+            
+            for rule in sorted_rules:
+                if rule["exit_code"] is not None and rule["exit_code"] == exit_code:
+                    self.active_alarms["db-prod"] = True
+                    return rule["alarm"]
+                
+                if rule["regex"] is not None and rule["regex"].search(logs):
+                    self.active_alarms["db-prod"] = True
+                    return rule["alarm"]
+            
+            # ── Unknown Fallback ──
+            self.active_alarms["db-prod"] = True
+            return f"🔴 ALARM: DB_CRASH - Unknown cause. Exit Code: {exit_code}"
+        
+        except docker.errors.NotFound:
+            return "🔴 ALARM: DB_CRASH - Container not found!"
+        except Exception as e:
+            print(f"[OBSERVER] DB check error: {e}")
+            return None
+
     async def start(self):
         """
         Main observer loop. Runs indefinitely.
@@ -131,5 +215,10 @@ class SystemObserver:
                         print(f"[OBSERVER] {alarm}")
                         if self.message_callback:
                             await self.message_callback(alarm)
+                elif isinstance(result, str):
+                    # For check_database which returns a single string alarm
+                    print(f"[OBSERVER] {result}")
+                    if self.message_callback:
+                        await self.message_callback(result)
 
             await asyncio.sleep(self.check_interval)
