@@ -1,7 +1,6 @@
 """System Observer — Phase 1 & 2."""
 import os
 import asyncio
-import subprocess
 import docker
 import re
 from datetime import datetime
@@ -75,13 +74,12 @@ class SystemObserver:
         alarm_type = "WEB_LOG_SATURATION"
 
         try:
-            result = subprocess.run(
-                f"docker exec {container_name} du -sm {path}",
-                shell=True, capture_output=True, text=True
-            )
-            # Output format: '155    /var/log'
+            container = self.client.containers.get(container_name)
+            exit_code, output = container.exec_run(f"du -sm {path}")
+            
+            # Output format: b'155\t/var/log\n'
             # First column = size (MB)
-            size_mb = int(result.stdout.strip().split()[0])
+            size_mb = int(output.decode('utf-8').strip().split()[0])
 
             if size_mb > self.web_log_threshold_mb:
                 if not self.active_alarms[container_name]:
