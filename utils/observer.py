@@ -56,54 +56,48 @@ class SystemObserver:
         self.client = docker.from_env()
 
         # Monitoring targets: container name -> path & alarm type
-        self.targets = {
-            "web-prod": {
-                "path": "/var/log",
-                "alarm": "WEB_LOG_SATURATION"
-            }
-            # db-prod removed -> handled globally by check_database()
+        # web-prod is our only disk target; db-prod is handled by check_database()
+        
+        # Build active_alarms dynamically
+        self.active_alarms = {
+            "web-prod": False,
+            "zombie": False,
+            "db-prod": False
         }
 
-        # Build active_alarms dynamically from targets + zombie + db-prod
-        self.active_alarms = {name: False for name in self.targets}
-        self.active_alarms["zombie"] = False
-        self.active_alarms["db-prod"] = False
-
-    def check_disk_usage(self):
+    def check_web_disk(self):
         """
-        Checks log directory sizes (in MB) for all monitored containers.
-
-        Iterates over self.targets and raises an alarm if the directory
-        size exceeds self.web_log_threshold_mb.
+        Checks log directory sizes (in MB) for web-prod container.
+        Raises an alarm if the directory size exceeds self.web_log_threshold_mb.
         """
-        alarms = []
+        container_name = "web-prod"
+        path = "/var/log"
+        alarm_type = "WEB_LOG_SATURATION"
 
-        for container_name, config in self.targets.items():
-            try:
-                result = subprocess.run(
-                    f"docker exec {container_name} du -sm {config['path']}",
-                    shell=True, capture_output=True, text=True
-                )
-                # Output format: '155    /var/log'
-                # First column = size (MB)
-                size_mb = int(result.stdout.strip().split()[0])
+        try:
+            result = subprocess.run(
+                f"docker exec {container_name} du -sm {path}",
+                shell=True, capture_output=True, text=True
+            )
+            # Output format: '155    /var/log'
+            # First column = size (MB)
+            size_mb = int(result.stdout.strip().split()[0])
 
-                if size_mb > self.web_log_threshold_mb:
-                    if not self.active_alarms[container_name]:
-                        self.active_alarms[container_name] = True
-                        alarm_type = config['alarm']
-                        msg = (
-                            f"⚠️ ALARM: {alarm_type} - {container_name} "
-                            f"{config['path']} size is {size_mb}MB! "
-                            f"(Threshold: {self.web_log_threshold_mb}MB)"
-                        )
-                        alarms.append(msg)
-                else:
-                    self.active_alarms[container_name] = False
-            except Exception as e:
-                print(f"[OBSERVER] {container_name} disk check error: {e}")
+            if size_mb > self.web_log_threshold_mb:
+                if not self.active_alarms[container_name]:
+                    self.active_alarms[container_name] = True
+                    msg = (
+                        f"⚠️ ALARM: {alarm_type} - {container_name} "
+                        f"{path} size is {size_mb}MB! "
+                        f"(Threshold: {self.web_log_threshold_mb}MB)"
+                    )
+                    return msg
+            else:
+                self.active_alarms[container_name] = False
+        except Exception as e:
+            print(f"[OBSERVER] {container_name} disk check error: {e}")
 
-        return alarms
+        return None
 
     def check_zombie_containers(self):
         """
@@ -122,14 +116,14 @@ class SystemObserver:
             if count > 5:
                 if not self.active_alarms["zombie"]:
                     self.active_alarms["zombie"] = True
-                    return [f"🧟 ALARM: ZOMBIE_OUTBREAK - {count} dead containers detected in the system!"]
+                    return f"🧟 ALARM: ZOMBIE_OUTBREAK - {count} dead containers detected in the system!"
             else:
                 self.active_alarms["zombie"] = False
 
         except Exception as e:
             print(f"[OBSERVER] Zombie check error: {e}")
 
-        return []
+        return None
 
     def check_database(self):
         """
@@ -194,7 +188,7 @@ class SystemObserver:
         print(f"[OBSERVER] Started. Scan interval: {self.check_interval}s")
 
         # Sensor list (Registry Pattern)
-        sensors = [self.check_disk_usage, self.check_zombie_containers]
+        sensors = [self.check_web_disk, self.check_zombie_containers, self.check_database]
 
         while True:
             print(f"[OBSERVER] Scanning... (interval: {self.check_interval}s)")
@@ -204,19 +198,13 @@ class SystemObserver:
             # 2. Wait for all results (prevents blocking)
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # 3. Process results in a standardized way
+            # 3. Process results in a standardized way (all valid alarms are now strings)
             for result in results:
                 if isinstance(result, Exception):
                     print(f"[OBSERVER] Sensor execution error: {result}")
                     continue
 
-                if isinstance(result, list) and result:
-                    for alarm in result:
-                        print(f"[OBSERVER] {alarm}")
-                        if self.message_callback:
-                            await self.message_callback(alarm)
-                elif isinstance(result, str):
-                    # For check_database which returns a single string alarm
+                if result:
                     print(f"[OBSERVER] {result}")
                     if self.message_callback:
                         await self.message_callback(result)
