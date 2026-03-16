@@ -1,9 +1,34 @@
 """OpsGuard Main Application — Phase 1 (Autonomous Mode)."""
 import asyncio
+import sys
+import logging
 import chainlit as cl
 from core.agent import create_agent
 from utils.observer import SystemObserver
 from chaos.runner import start_chaos_loop
+
+# ── Centralized Logging Configuration ──
+logger = logging.getLogger("opsguard")
+logger.setLevel(logging.INFO)
+
+# Hot-Reload Protection: Chainlit reloads app.py on file changes.
+# Without this guard, duplicate handlers would be added on every reload,
+# causing each log line to appear multiple times in the output.
+if not logger.handlers:
+    formatter = logging.Formatter(
+        "%(asctime)s - %(levelname)s - [%(name)s] - %(message)s"
+    )
+
+    # Handler 1: Persistent audit log file (append mode, UTF-8)
+    file_handler = logging.FileHandler("opsguard_audit.log", mode="a", encoding="utf-8")
+    file_handler.setFormatter(formatter)
+
+    # Handler 2: Live terminal output via stdout
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(formatter)
+
+    logger.addHandler(file_handler)
+    logger.addHandler(stream_handler)
 
 # Global agent and observer (shared across all sessions)
 agent_executor = None
