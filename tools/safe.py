@@ -1,4 +1,4 @@
-"""Safe (Autonomous) Tools — Phase 1 (Docker SDK)."""
+"""Safe (Autonomous) Tools — Phase 2 (Docker SDK + Feedback)."""
 import docker
 from langchain.tools import tool
 from utils.docker_client import global_docker_client as client
@@ -6,32 +6,38 @@ from utils.docker_client import global_docker_client as client
 @tool
 def clean_logs(container_name: str) -> str:
     """
-    Truncates all log files under /var/log in the specified container.
+    Truncates all .log files under /var/log in the specified container.
 
     Use this tool when a disk saturation alarm is raised.
-    Should be called with 'web-prod' for WEB_LOG_SATURATION alarms.
+    After cleanup, measures /var/log size and reports the result.
 
     Args:
-        container_name: Target container name (e.g. 'web-prod')
+        container_name: Target container name (e.g. 'web-prod', 'db-prod')
 
     Returns:
-        Cleanup result with current /var/log size in MB.
+        SUCCESSFUL: /var/log size dropped below 100MB.
+        UNSUCCESSFUL: /var/log is still 100MB or above (non-log data exists).
     """
     try:
         container = client.containers.get(container_name)
 
         # 1. Truncate all log files inside the container
-        # sh -c is required for wildcard (*) expansion
         container.exec_run("sh -c 'truncate -s 0 /var/log/*.log'")
 
-        # 2. Check directory size after cleanup (du -sm = size in MB)
+        # 2. Measure /var/log size after cleanup (du -sm = size in MB)
         exit_code, output = container.exec_run("du -sm /var/log")
 
-        # 3. Parse MB value from output (format: b'155\t/var/log\n')
-        size_mb = int(output.decode().strip().split()[0])
+        # 3. Parse MB value from output (format: b'42\t/var/log\n')
+        size_mb = int(output.decode('utf-8').strip().split()[0])
 
-        return f"{container_name} logs cleaned. Current /var/log size: {size_mb}MB."
-
+        # 4. Evaluate result (threshold: 100MB)
+        if size_mb < 100:
+            return f"SUCCESSFUL: {container_name} logs cleaned. /var/log size: {size_mb}MB."
+        else:
+            return (
+                f"UNSUCCESSFUL: {container_name} logs cleaned BUT /var/log is still "
+                f"{size_mb}MB! (Persistent non-log data exists — clean_logs is insufficient)."
+            )
     except docker.errors.NotFound:
         return f"Error: Container '{container_name}' not found."
     except Exception as e:
