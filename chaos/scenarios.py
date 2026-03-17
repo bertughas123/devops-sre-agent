@@ -2,11 +2,7 @@
 import random
 import time
 import docker
-
-try:
-    client = docker.from_env()
-except Exception:
-    client = None
+from utils.docker_client import global_docker_client as client
 
 
 def fill_web_disk_trigger():

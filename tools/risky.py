@@ -3,6 +3,7 @@ import logging
 import docker
 from langchain.tools import tool
 from utils.security import requires_chainlit_approval
+from utils.docker_client import global_docker_client
 
 logger = logging.getLogger("opsguard.risky")
 
@@ -33,8 +34,7 @@ async def restart_database_risky(reason: str) -> str:
         Success or failure message string.
     """
     try:
-        client = docker.from_env()
-        container = client.containers.get("db-prod")
+        container = global_docker_client.containers.get("db-prod")
         container.restart(timeout=30)
 
         logger.info(f"DB_RESTART_SUCCESS | reason={reason}")

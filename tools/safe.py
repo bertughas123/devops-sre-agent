@@ -1,9 +1,7 @@
 """Safe (Autonomous) Tools — Phase 1 (Docker SDK)."""
 import docker
 from langchain.tools import tool
-
-# Module-level Docker client (single connection, reused by all tools)
-client = docker.from_env()
+from utils.docker_client import global_docker_client as client
 
 @tool
 def clean_logs(container_name: str) -> str:

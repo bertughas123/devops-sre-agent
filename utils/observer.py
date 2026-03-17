@@ -5,6 +5,7 @@ import docker
 import re
 from datetime import datetime
 from dateutil import parser as dateutil_parser
+from utils.docker_client import global_docker_client
 
 # ── SRE Rule Engine: Database Crash Diagnosis ──
 DIAGNOSIS_RULES = [
@@ -52,7 +53,7 @@ class SystemObserver:
         self.message_callback = message_callback
         self.check_interval = int(os.getenv("OBSERVER_INTERVAL", "30"))
         self.web_log_threshold_mb = int(os.getenv("WEB_LOG_THRESHOLD_MB", "100"))
-        self.client = docker.from_env()
+        self.client = global_docker_client
 
         # Monitoring targets: container name -> path & alarm type
         # web-prod is our only disk target; db-prod is handled by check_database()
