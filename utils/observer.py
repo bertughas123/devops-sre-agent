@@ -14,28 +14,28 @@ DIAGNOSIS_RULES = [
         "type": "OOM_KILL",
         "exit_code": 137,
         "regex": None,
-        "alarm": "🔴 ALARM: DB_CRASH - OOM Killer! Database killed due to memory exhaustion. (Exit 137)"
+        "alarm": "🔴 ALARM: DB_CRASH (db-prod) - OOM Killer! Database killed due to memory exhaustion. (Exit 137)"
     },
     {
         "priority": 2,
         "type": "DISK_FULL",
         "exit_code": None,
         "regex": re.compile(r"no space left|disk full|out of disk", re.IGNORECASE),
-        "alarm": "🔴 ALARM: DB_CRASH - Disk Full! Database crashed due to no space left."
+        "alarm": "🔴 ALARM: DB_CRASH (db-prod) - Disk Full! Database crashed due to no space left."
     },
     {
         "priority": 3,
         "type": "CONFIG_ERROR",
         "exit_code": None,
         "regex": re.compile(r"configuration file.*errors?", re.IGNORECASE),
-        "alarm": "🔴 ALARM: DB_CRASH - Config Error! postgresql.conf is corrupted. Restart will NOT fix this."
+        "alarm": "🔴 ALARM: DB_CRASH (db-prod) - Config Error! postgresql.conf is corrupted. Restart will NOT fix this."
     },
     {
         "priority": 4,
         "type": "DATA_CORRUPTION",
         "exit_code": None,
         "regex": re.compile(r"invalid checksum|panic:", re.IGNORECASE),
-        "alarm": "🔴 ALARM: DB_CRASH - DATA CORRUPTION! pg_control or data files are damaged. Restart is DANGEROUS!"
+        "alarm": "🔴 ALARM: DB_CRASH (db-prod) - DATA CORRUPTION! pg_control or data files are damaged. Restart is DANGEROUS!"
     }
 ]
 
@@ -167,10 +167,10 @@ class SystemObserver:
             
             # ── Unknown Fallback ──
             self.active_alarms["db-prod"] = True
-            return f"🔴 ALARM: DB_CRASH - Unknown cause. Exit Code: {exit_code}"
+            return f"🔴 ALARM: DB_CRASH (db-prod) - Unknown cause. Exit Code: {exit_code}"
         
         except docker.errors.NotFound:
-            return "🔴 ALARM: DB_CRASH - Container not found!"
+            return "🔴 ALARM: DB_CRASH (db-prod) - Container not found!"
         except Exception as e:
             print(f"[OBSERVER] DB check error: {e}")
             return None

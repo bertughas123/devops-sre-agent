@@ -38,16 +38,16 @@ async def restart_database_risky(reason: str) -> str:
         container.restart(timeout=30)
 
         logger.info(f"DB_RESTART_SUCCESS | reason={reason}")
-        return f"db-prod restarted successfully. Reason: {reason}"
+        return f"SUCCESSFUL: db-prod restarted. Reason: {reason}"
 
     except docker.errors.NotFound:
         logger.error("DB_RESTART_FAILED | error=container 'db-prod' not found")
-        return "Restart FAILED: Container 'db-prod' not found."
+        return "UNSUCCESSFUL: Container 'db-prod' not found."
 
     except docker.errors.APIError as e:
         logger.error(f"DB_RESTART_FAILED | error=Docker API error: {e}")
-        return f"Restart FAILED: Docker API error — {e}"
+        return f"UNSUCCESSFUL: Docker API error — {e}"
 
     except Exception as e:
         logger.error(f"DB_RESTART_FAILED | error=unexpected: {e}")
-        return f"Restart FAILED: Unexpected error — {e}"
+        return f"UNSUCCESSFUL: Unexpected error — {e}"
