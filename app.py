@@ -1,4 +1,4 @@
-"""OpsGuard Main Application — Phase 1 (Autonomous Mode)."""
+"""OpsGuard Main Application — Phase 2 (Autonomous + Human-in-the-Loop)."""
 import asyncio
 import sys
 import logging
@@ -50,21 +50,15 @@ async def start():
     agent_executor = create_agent()
 
     # 2. Start the Observer
-    # Autonomous Trigger (Zero-Touch):
-    # When Observer raises an alarm, Agent is invoked automatically.
-    # Does NOT wait for the user to say "fix it".
     async def handle_alarm_autonomously(message: str):
-        # 1. Notify the UI
         await cl.Message(content=f"🚨 RADAR: {message}\n🤖 OpsGuard Autonomous Intervention Starting...").send()
 
-        # 2. Trigger the agent automatically (do not wait for user!)
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: agent_executor.invoke({"input": f"Emergency: {message}. Resolve autonomously."})
+        # ainvoke preserves Chainlit's async context, allowing
+        # @requires_chainlit_approval UI buttons to render correctly.
+        result = await agent_executor.ainvoke(
+            {"input": f"Emergency: {message}. Resolve autonomously."}
         )
 
-        # 3. Display the agent's result
         output = result.get("output", "No response generated.")
         await cl.Message(content=f"🛡️ OPSGUARD REPORT:\n{output}").send()
 

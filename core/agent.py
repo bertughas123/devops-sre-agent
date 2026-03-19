@@ -1,10 +1,11 @@
-"""LangChain ReAct Agent Setup — Phase 1 (Offline & Stable)."""
+"""LangChain ReAct Agent Setup — Phase 2 (Risky Tools + Approval Gate)."""
 from langchain_classic.agents import AgentExecutor, create_react_agent
 from langchain_core.prompts import PromptTemplate
 
 from core.llm import get_llm
 from core.prompt import SYSTEM_PROMPT
 from tools.safe import clean_logs, prune_containers
+from tools.risky import restart_database_risky
 
 # Hardcoded ReAct template (offline mode — no hub dependency)
 REACT_TEMPLATE = """{system_prompt}
@@ -32,7 +33,7 @@ Thought:{agent_scratchpad}"""
 def create_agent():
     """Creates and returns the OpsGuard ReAct agent."""
     llm = get_llm()
-    tools = [clean_logs, prune_containers]
+    tools = [clean_logs, prune_containers, restart_database_risky]
 
     # Build the final prompt by injecting SYSTEM_PROMPT into the template
     prompt_string = REACT_TEMPLATE.replace("{system_prompt}", SYSTEM_PROMPT)
@@ -49,7 +50,7 @@ def create_agent():
         tools=tools,
         verbose=True,                   # Print reasoning steps to console
         handle_parsing_errors=True,     # Auto-recover from LLM format errors
-        max_iterations=10,              # Prevent infinite reasoning loops
+        max_iterations=15,              # Phase 2: multi-step scenarios need more steps
         return_intermediate_steps=True  # Return intermediate steps for UI
     )
 
