@@ -1,8 +1,11 @@
 """Chaos Scenarios — Phase 1 & Phase 2."""
 import random
 import time
+import logging
 import docker
 from utils.docker_client import global_docker_client as client
+
+logger = logging.getLogger("opsguard.chaos")
 
 
 def fill_web_disk_trigger():
@@ -57,10 +60,10 @@ def create_zombie_containers(count=15):
             )
             created_count += 1
         except docker.errors.ImageNotFound:
-            print("[CHAOS] ERROR: 'alpine' image not found!")
+            logger.error("'alpine' image not found!")
             break
         except docker.errors.APIError as e:
-            print(f"[CHAOS] API Error ({name}): {e}")
+            logger.error(f"API Error ({name}): {e}")
             continue
 
     return f"Chaos: {created_count} zombie containers created (via SDK)."

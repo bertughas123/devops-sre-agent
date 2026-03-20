@@ -1,7 +1,10 @@
 """Safe (Autonomous) Tools — Phase 2 (Docker SDK + Feedback)."""
+import logging
 import docker
 from langchain.tools import tool
 from utils.docker_client import global_docker_client as client
+
+logger = logging.getLogger("opsguard.safe")
 
 @tool
 def clean_logs(container_name: str) -> str:
@@ -32,15 +35,19 @@ def clean_logs(container_name: str) -> str:
 
         # 4. Evaluate result (threshold: 100MB)
         if size_mb < 100:
+            logger.info(f"CLEAN_LOGS_SUCCESS | container={container_name} | size={size_mb}MB")
             return f"SUCCESSFUL: {container_name} logs cleaned. /var/log size: {size_mb}MB."
         else:
+            logger.info(f"CLEAN_LOGS_INSUFFICIENT | container={container_name} | size={size_mb}MB")
             return (
                 f"UNSUCCESSFUL: {container_name} logs cleaned BUT /var/log is still "
                 f"{size_mb}MB! (Persistent non-log data exists — clean_logs is insufficient)."
             )
     except docker.errors.NotFound:
+        logger.error(f"CLEAN_LOGS_FAILED | container={container_name} | error=not found")
         return f"Error: Container '{container_name}' not found."
     except Exception as e:
+        logger.error(f"CLEAN_LOGS_FAILED | container={container_name} | error={e}")
         return f"Error cleaning logs on {container_name}: {e}"
 
 @tool
@@ -67,9 +74,11 @@ def prune_containers(reason: str) -> str:
         space_bytes = result.get("SpaceReclaimed", 0)
         space_mb = round(space_bytes / (1024 * 1024), 2)
 
+        logger.info(f"PRUNE_SUCCESS | deleted={deleted_count} | reclaimed={space_mb}MB | reason={reason}")
         return (
             f"System pruned. Reason: {reason}. "
             f"Deleted: {deleted_count} containers. Reclaimed: {space_mb}MB."
         )
     except Exception as e:
+        logger.error(f"PRUNE_FAILED | error={e}")
         return f"Error during prune: {e}"

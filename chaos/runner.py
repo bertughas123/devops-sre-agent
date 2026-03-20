@@ -1,7 +1,10 @@
 """Chaos Runner — Exhaustible loop for Phase 1 & Phase 2 (Shuffle & Pop)."""
 import time
+import logging
 import threading
 import random
+
+logger = logging.getLogger("opsguard.chaos")
 
 from chaos.scenarios import (
     fill_web_disk_trigger,
@@ -34,17 +37,17 @@ def start_chaos_loop(interval_min=450, interval_max=650):
 
         while scenarios:
             wait = random.randint(interval_min, interval_max)
-            print(f"[CHAOS] Next scenario in {wait}s. Remaining tests: {len(scenarios)}")
+            logger.info(f"Next scenario in {wait}s. Remaining tests: {len(scenarios)}")
             time.sleep(wait)
             scenario = scenarios.pop()
             try:
                 result = scenario()
-                print(f"[CHAOS] {result}")
+                logger.info(f"{result}")
             except Exception as e:
-                print(f"[CHAOS] Error: {e}")
+                logger.error(f"Scenario execution error: {e}")
 
-        print("[CHAOS] All chaos scenarios executed successfully. Engine stopping.")
+        logger.info("All chaos scenarios executed successfully. Engine stopping.")
 
     t = threading.Thread(target=_loop, daemon=True)
     t.start()
-    print("[CHAOS] Chaos loop started.")
+    logger.info("Chaos loop started.")

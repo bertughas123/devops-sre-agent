@@ -1,11 +1,14 @@
 """System Observer — Phase 1 & 2."""
 import os
 import asyncio
+import logging
 import docker
 import re
 from datetime import datetime
 from dateutil import parser as dateutil_parser
 from utils.docker_client import global_docker_client
+
+logger = logging.getLogger("opsguard.observer")
 
 # ── SRE Rule Engine: Database Crash Diagnosis ──
 DIAGNOSIS_RULES = [
@@ -94,7 +97,7 @@ class SystemObserver:
             else:
                 self.active_alarms[container_name] = False
         except Exception as e:
-            print(f"[OBSERVER] {container_name} disk check error: {e}")
+            logger.error(f"{container_name} disk check error: {e}")
 
         return None
 
@@ -120,7 +123,7 @@ class SystemObserver:
                 self.active_alarms["zombie"] = False
 
         except Exception as e:
-            print(f"[OBSERVER] Zombie check error: {e}")
+            logger.error(f"Zombie check error: {e}")
 
         return None
 
@@ -172,7 +175,7 @@ class SystemObserver:
         except docker.errors.NotFound:
             return "🔴 ALARM: DB_CRASH (db-prod) - Container not found!"
         except Exception as e:
-            print(f"[OBSERVER] DB check error: {e}")
+            logger.error(f"DB check error: {e}")
             return None
 
     async def start(self):
@@ -184,13 +187,13 @@ class SystemObserver:
         2. Process results → invoke callback if alarms exist
         3. Sleep for interval → repeat
         """
-        print(f"[OBSERVER] Started. Scan interval: {self.check_interval}s")
+        logger.info(f"Started. Scan interval: {self.check_interval}s")
 
         # Sensor list (Registry Pattern)
         sensors = [self.check_web_disk, self.check_zombie_containers, self.check_database]
 
         while True:
-            print(f"[OBSERVER] Scanning... (interval: {self.check_interval}s)")
+            logger.info(f"Scanning... (interval: {self.check_interval}s)")
             # 1. Run all sensors CONCURRENTLY in background threads
             tasks = [asyncio.to_thread(sensor) for sensor in sensors]
 
@@ -200,11 +203,11 @@ class SystemObserver:
             # 3. Process results in a standardized way (all valid alarms are now strings)
             for result in results:
                 if isinstance(result, Exception):
-                    print(f"[OBSERVER] Sensor execution error: {result}")
+                    logger.error(f"Sensor execution error: {result}")
                     continue
 
                 if result:
-                    print(f"[OBSERVER] {result}")
+                    logger.warning(f"ALARM TRIGGERED: {result}")
                     if self.message_callback:
                         await self.message_callback(result)
 
