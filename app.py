@@ -55,8 +55,11 @@ async def start():
 
         # ainvoke preserves Chainlit's async context, allowing
         # @requires_chainlit_approval UI buttons to render correctly.
+        # AsyncLangchainCallbackHandler renders Thought/Action/Observation as UI steps.
+        cb = cl.AsyncLangchainCallbackHandler()
         result = await agent_executor.ainvoke(
-            {"input": f"Emergency: {message}. Resolve autonomously."}
+            {"input": f"Emergency: {message}. Resolve autonomously."},
+            config={"callbacks": [cb]}
         )
 
         output = result.get("output", "No response generated.")
