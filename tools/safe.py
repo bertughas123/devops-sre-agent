@@ -76,7 +76,7 @@ def prune_containers(reason: str) -> str:
 
         logger.info(f"PRUNE_SUCCESS | deleted={deleted_count} | reclaimed={space_mb}MB | reason={reason}")
         return (
-            f"System pruned. Reason: {reason}. "
+            f"SUCCESSFUL: System pruned. Reason: {reason}. "
             f"Deleted: {deleted_count} containers. Reclaimed: {space_mb}MB."
         )
     except Exception as e:
